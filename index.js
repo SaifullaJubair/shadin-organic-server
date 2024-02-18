@@ -16,7 +16,8 @@ const client_link = process.env.CLIENT_LINK;
 const server_link = process.env.SERVER_LINK;
 const is_live = false;
 
-const uri = `mongodb+srv://${process.env.DB_USER}:${process.env.DB_PASSWORD}@cluster0.xouf86z.mongodb.net/?retryWrites=true&w=majority`;
+const uri = `mongodb+srv://${process.env.DB_USER}:${process.env.DB_PASSWORD}@cluster0.y5svw3w.mongodb.net/?retryWrites=true&w=majority`;
+// Create a MongoClient with a MongoClientOptions object to set the Stable API version
 const client = new MongoClient(uri, {
   serverApi: {
     version: ServerApiVersion.v1,
@@ -24,33 +25,25 @@ const client = new MongoClient(uri, {
     deprecationErrors: true,
   },
 });
+
 async function run() {
   try {
     //---------All collection here---------
-    const usersCollection = client.db("ShovonGallery").collection("users");
-    const productCollection = client.db("ShovonGallery").collection("products");
-    const ordersCollection = client.db("ShovonGallery").collection("orders");
-    const bangladeshCollection = client
-      .db("ShovonGallery")
-      .collection("bangladesh");
-    const categoriesCollection = client
-      .db("ShovonGallery")
-      .collection("categories");
-    const bannerImgCollection = client
-      .db("ShovonGallery")
-      .collection("bannerImg");
-    const fixedImgCollection = client
-      .db("ShovonGallery")
-      .collection("fixedImg");
-    const qnaCollection = client.db("ShovonGallery").collection("qna");
-    const reviewCollection = client.db("ShovonGallery").collection("review");
-    const wishListCollection = client
-      .db("ShovonGallery")
-      .collection("wishlist");
-    const cartCollection = client.db("ShovonGallery").collection("cart");
+    const DB = client.db("ShadinOrganic");
+    const usersCollection = DB.collection("users");
+    const productCollection = DB.collection("products");
+    const ordersCollection = DB.collection("orders");
+    const bangladeshCollection = DB.collection("bangladesh");
+    const categoriesCollection = DB.collection("categories");
+    const bannerImgCollection = DB.collection("bannerImg");
+    const fixedImgCollection = DB.collection("fixedImg");
+    const qnaCollection = DB.collection("qna");
+    const reviewCollection = DB.collection("review");
+    const wishListCollection = DB.collection("wishlist");
+    const cartCollection = DB.collection("cart");
 
     app.get("/", async (req, res) => {
-      console.log("Shovon's Gallery server is running");
+      console.log("Shadin Organic  server is running");
       res.send("Server runing");
     });
 
@@ -228,7 +221,7 @@ async function run() {
               $replaceRoot: { newRoot: "$latestProduct" }, // Replace the root document with the latest product in each category
             },
             {
-              $limit: 4, // Limit the output to 4 documents
+              $limit: 8, // Limit the output to 4 documents
             },
           ])
           .toArray();
@@ -778,6 +771,35 @@ async function run() {
         res.status(500).json({ error: "Internal server error" });
       }
     });
+    // all qna
+    app.get("/all-qna", async (req, res) => {
+      try {
+        const qna = await qnaCollection.find().sort({ postDate: -1 }).toArray();
+
+        // Extracting product IDs from the QnA
+        const productIds = qna.map((item) => item.product_id);
+
+        // Finding products that match the extracted product IDs
+        const products = await productCollection
+          .find({ _id: { $in: productIds.map((id) => new ObjectId(id)) } })
+          .toArray();
+
+        // Merging cart items with corresponding product details
+        const mergedData = qna.map((item) => {
+          const product = products.find(
+            (product) => product._id.toString() === item.product_id
+          );
+          // console.log("Item:", item);
+          // console.log("Found Product:", product);
+          return { ...item, product };
+        });
+
+        res.send(mergedData);
+      } catch (error) {
+        console.error(error);
+        res.status(500).json({ error: "Internal server error" });
+      }
+    });
 
     app.get("/dashboard/all-qna/:email", async (req, res) => {
       try {
@@ -1100,57 +1122,29 @@ async function run() {
       }
     });
     // ====== ALL BANGLADESH API END HERE ======= //
+
     // ====== ALL ORDER API START HERE ======= //
+
     app.post("/checkout", async (req, res) => {
       try {
         const order = req.body;
+        const { userEmail } = req.body;
 
         const transactionId = new ObjectId().toString();
-        const data = {
-          total_amount: order.totalAmount,
-          currency: "BDT",
-          tran_id: transactionId, // use unique tran_id for each api call
-          cus_name: order.userName,
-          cus_email: order.userEmail,
-          cus_add1: order.address,
-          cartProducts: order.cartProducts,
-          cus_city: order.district,
-          cus_state: order.division,
-          cus_phone: order.number,
-          success_url: `${server_link}/payment/success?transactionId=${transactionId}&userEmail=${order.userEmail}`,
-          fail_url: `${server_link}/payment/fail?transactionId=${transactionId}`,
-          cancel_url: `${server_link}/payment/cancel?transactionId=${transactionId}`,
-          ipn_url: "http://localhost:3030/ipn",
-          shipping_method: "Courier",
-          product_name: "Computer",
-          product_category: "Electronic",
-          product_profile: "general",
-          cus_add2: "",
-          cus_postcode: "",
-          cus_country: "Bangladesh",
-          cus_fax: "",
-          ship_name: "Customer Name",
-          ship_add1: "Dhaka",
-          ship_add2: "Dhaka",
-          ship_city: "Dhaka",
-          ship_state: "Dhaka",
-          ship_postcode: 1000,
-          ship_country: "Bangladesh",
-        };
 
-        const sslcz = new SSLCommerzPayment(store_id, store_password, is_live);
-        sslcz.init(data).then((apiResponse) => {
-          // Redirect the user to payment gateway
-          let GatewayPageURL = apiResponse.GatewayPageURL;
-          // console.log(apiResponse);
-          ordersCollection.insertOne({
-            ...order,
-            transactionId,
-            paid: false,
-            delivered: "Processing",
-          });
-          res.send({ url: GatewayPageURL });
+        const result = await ordersCollection.insertOne({
+          ...order,
+          transactionId,
+          paid: false,
+          delivered: "Processing",
         });
+        res.send(result);
+
+        if (result.acknowledged) {
+          const deleteCartResult = await cartCollection.deleteMany({
+            userEmail: userEmail,
+          });
+        }
       } catch (error) {
         console.error("Error during checkout:", error);
         res
@@ -1158,74 +1152,28 @@ async function run() {
           .json({ success: false, error: "Internal server error" });
       }
     });
-
-    app.post("/payment/success", async (req, res) => {
-      const { transactionId, userEmail } = req.query;
-      // console.log(transactionId, userEmail);
-      const currentDate = new Date();
-      const options = {
-        year: "numeric",
-        month: "short",
-        day: "numeric",
-        hour: "2-digit",
-        minute: "2-digit",
-        timeZoneName: "short",
-        timeZone: "Asia/Dhaka",
-      };
-      const formattedDate = new Intl.DateTimeFormat("en-US", options).format(
-        currentDate
-      );
-      if (!transactionId) {
-        return res.redirect(`${client_link}/payment/fail`);
-      }
-      const result = await ordersCollection.updateOne(
-        { transactionId },
-        { $set: { paid: true, paymentDate: formattedDate } }
-      );
-      if (result.modifiedCount > 0) {
-        res.redirect(
-          `${client_link}/payment/success?transactionId=${transactionId}`
-        );
-
-        const deleteCartResult = await cartCollection.deleteMany({
-          userEmail: userEmail,
-        });
+    // get by order id
+    app.get("/orders/:id", async (req, res) => {
+      try {
+        const id = req.params.id;
+        const query = { _id: new ObjectId(id) };
+        const result = await ordersCollection.findOne(query);
+        res.send(result);
+      } catch (error) {
+        console.error(error);
+        res.status(500).json({ error: "Internal server error" });
       }
     });
-    app.post("/payment/fail", async (req, res) => {
-      const { transactionId } = req.query;
-      if (!transactionId) {
-        return res.redirect(`${client_link}/payment/fail`);
-      }
-      const result = await ordersCollection.deleteOne({ transactionId });
-      if (result.deletedCount) {
-        res.redirect(`${client_link}/payment/fail`);
-      }
-    });
-    app.post("/payment/cancel", async (req, res) => {
-      const { transactionId } = req.query;
-      if (!transactionId) {
-        return res.redirect(`${client_link}/cart`);
-      }
-      const result = await ordersCollection.deleteOne({ transactionId });
-      if (result.deletedCount) {
-        res.redirect(`${client_link}/cart`);
-      }
-    });
-
     // Get checkout data by user email
     app.get("/orders/by-transaction-id/:id", async (req, res) => {
       try {
         const id = req.params.id;
-
         // Fetch checkout data based on user email
         const orders = await ordersCollection.findOne({ transactionId: id });
-
         if (!orders) {
           // If no checkout data found for the user, send a 404 response
           return res.status(404).json({ error: "Checkout data not found" });
         }
-
         res.json(orders);
       } catch (error) {
         console.error(error);
@@ -1240,7 +1188,7 @@ async function run() {
         // Fetch checkout data based on user email
         const checkoutData = await ordersCollection
           .find({ userEmail })
-          .sort({ paymentDate: -1 })
+          .sort({ checkoutDate: -1 })
           .toArray();
 
         if (!checkoutData) {
@@ -1313,5 +1261,5 @@ run().catch((error) => {
 });
 
 app.listen(port, () => {
-  console.log(`Shovon Gallery server is running on ${port}`);
+  console.log(`Shadin Organic server is running on ${port}`);
 });
