@@ -1181,10 +1181,9 @@ async function run() {
       }
     });
 
-    app.get("/orders/:email", async (req, res) => {
+    app.get("/dashboard/orders/:email", async (req, res) => {
       try {
         const userEmail = req.params.email;
-
         // Fetch checkout data based on user email
         const checkoutData = await ordersCollection
           .find({ userEmail })
@@ -1208,7 +1207,7 @@ async function run() {
         const query = {};
         const orders = await ordersCollection
           .find(query)
-          .sort({ paymentDate: -1 })
+          .sort({ checkoutDate: -1 })
           .toArray();
         res.send(orders);
       } catch (error) {
